@@ -20,6 +20,8 @@ import type { OpenCollectionRequestDocument } from "../mainview/opencollection/s
 
 const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
+const MIN_WINDOW_WIDTH = 1000;
+const MIN_WINDOW_HEIGHT = 700;
 
 const IGNORED_SCAN_DIRS = new Set([
   ".git",
@@ -201,16 +203,26 @@ async function getMainViewUrl(): Promise<string> {
 // Create the main application window
 const url = await getMainViewUrl();
 
-new BrowserWindow({
+const mainWindow = new BrowserWindow({
   title: "Reccy API Client",
   url,
   frame: {
-    width: 900,
-    height: 700,
+    width: MIN_WINDOW_WIDTH,
+    height: MIN_WINDOW_HEIGHT,
     x: 200,
     y: 200,
   },
   rpc,
+});
+
+mainWindow.on("resize", () => {
+  const { width, height } = mainWindow.getSize();
+  const nextWidth = Math.max(width, MIN_WINDOW_WIDTH);
+  const nextHeight = Math.max(height, MIN_WINDOW_HEIGHT);
+
+  if (nextWidth !== width || nextHeight !== height) {
+    mainWindow.setSize(nextWidth, nextHeight);
+  }
 });
 
 console.log("Reccy API client started!");
