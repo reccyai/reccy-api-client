@@ -110,8 +110,10 @@ function buildDefaultRequestContent(name: string): string {
 
 const rpc = BrowserView.defineRPC<AppRPCSchema & ElectrobunRPCSchema>({
   handlers: {
-    requests: {
-      openProject: async ({ rootPath }) => {
+    requests: async (method, params) => {
+      if (method === "openProject") {
+        const { rootPath } =
+          params as AppRPCSchema["bun"]["requests"]["openProject"]["params"];
         const resolvedRootPath = path.resolve(rootPath);
         const rootStats = await stat(resolvedRootPath);
         if (!rootStats.isDirectory()) {
@@ -132,14 +134,20 @@ const rpc = BrowserView.defineRPC<AppRPCSchema & ElectrobunRPCSchema>({
           collectionName,
           requests,
         };
-      },
-      saveRequest: async ({ rootPath, filePath, content }) => {
+      }
+
+      if (method === "saveRequest") {
+        const { rootPath, filePath, content } =
+          params as AppRPCSchema["bun"]["requests"]["saveRequest"]["params"];
         const fullPath = path.join(path.resolve(rootPath), filePath);
         await mkdir(path.dirname(fullPath), { recursive: true });
         await writeFile(fullPath, content, "utf8");
         return { ok: true as const };
-      },
-      createRequest: async ({ rootPath, name }) => {
+      }
+
+      if (method === "createRequest") {
+        const { rootPath, name } =
+          params as AppRPCSchema["bun"]["requests"]["createRequest"]["params"];
         const resolvedRootPath = path.resolve(rootPath);
         const requestsDir = path.join(resolvedRootPath, "requests");
         await mkdir(requestsDir, { recursive: true });
@@ -157,12 +165,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema & ElectrobunRPCSchema>({
           filePath: relativePath,
           content,
         };
-      },
-      deleteRequest: async ({ rootPath, filePath }) => {
+      }
+
+      if (method === "deleteRequest") {
+        const { rootPath, filePath } =
+          params as AppRPCSchema["bun"]["requests"]["deleteRequest"]["params"];
         const fullPath = path.join(path.resolve(rootPath), filePath);
         await rm(fullPath, { force: true });
         return { ok: true as const };
-      },
+      }
+
+      throw new Error(`Unknown RPC request method: ${String(method)}`);
     },
     messages: {},
   },
