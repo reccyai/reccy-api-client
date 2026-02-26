@@ -1,4 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  AlertDialog,
+  Button,
+  Dialog,
+  ScrollArea,
+  Select,
+  Tabs,
+  Text,
+  TextArea,
+  TextField,
+} from "@radix-ui/themes";
 import type {
   ApiRequest,
   AuthConfig,
@@ -135,6 +146,8 @@ function useDraftRequest(selectedRequest: ApiRequest | null) {
 }
 
 function App() {
+  type RequestTab = "query" | "body" | "headers" | "auth" | "script";
+  type ResponseTab = "response" | "headers" | "timeline" | "tests";
   const [projectPathInput, setProjectPathInput] = useState("");
   const [project, setProject] = useState<Project | null>(null);
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
@@ -145,6 +158,11 @@ function App() {
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newRequestName, setNewRequestName] = useState("New Request");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [requestTab, setRequestTab] = useState<RequestTab>("query");
+  const [responseTab, setResponseTab] = useState<ResponseTab>("response");
 
   const selectedRequest = useMemo(() => {
     if (!project || !selectedRequestId) {
@@ -188,18 +206,21 @@ function App() {
     }
   }
 
-  async function handleCreateRequest() {
+  async function handleCreateRequest(name: string) {
     if (!project) {
       return;
     }
 
-    const name = window.prompt("Request name", "New Request")?.trim();
-    if (!name) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       return;
     }
 
     try {
-      const newRequest = await createRequest(project.collection.rootPath, name);
+      const newRequest = await createRequest(
+        project.collection.rootPath,
+        trimmedName,
+      );
       setProject((previous) => {
         if (!previous) {
           return previous;
@@ -215,6 +236,8 @@ function App() {
         };
       });
       setSelectedRequestId(newRequest.id);
+      setCreateDialogOpen(false);
+      setNewRequestName("New Request");
     } catch (requestError) {
       setError((requestError as Error).message);
     }
@@ -222,10 +245,6 @@ function App() {
 
   async function handleDeleteRequest() {
     if (!project || !selectedRequest) {
-      return;
-    }
-
-    if (!window.confirm(`Delete request "${selectedRequest.name}"?`)) {
       return;
     }
 
@@ -251,6 +270,7 @@ function App() {
           },
         };
       });
+      setDeleteDialogOpen(false);
     } catch (requestError) {
       setError((requestError as Error).message);
     }
@@ -330,7 +350,7 @@ function App() {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        void handleCreateRequest();
+        setCreateDialogOpen(true);
       }
     };
 
@@ -348,19 +368,19 @@ function App() {
         </div>
         <div className="h-4 w-px bg-[#2b2e3a]" />
         <div className="text-xs text-slate-400">OpenCollection</div>
-        <input
+        <TextField.Root
           value={projectPathInput}
           onChange={(event) => setProjectPathInput(event.target.value)}
           className="ml-3 flex-1 h-7 bg-[#0d1016] border border-[#2b2e3a] rounded px-2 text-xs text-slate-200"
           placeholder="/path/to/repo-backed-opencollection"
         />
-        <button
+        <Button
           onClick={handleOpenProject}
           disabled={loadingProject}
           className="h-7 px-3 rounded bg-[#202b45] text-xs text-slate-100 border border-[#3a4767] hover:bg-[#2a3859] disabled:opacity-60"
         >
           {loadingProject ? "Opening..." : "Open"}
-        </button>
+        </Button>
       </header>
 
       {error && (
@@ -380,45 +400,43 @@ function App() {
                 {project?.collection.name ?? "My Workspace"}
               </p>
             </div>
-            <button
-              onClick={handleCreateRequest}
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
               disabled={!project}
               className="h-6 px-2 rounded border border-[#2b2e3a] bg-[#151924] hover:bg-[#1a2030] text-xs disabled:opacity-50"
             >
               +
-            </button>
+            </Button>
           </div>
 
-          <div className="p-2 overflow-auto space-y-1">
-            {project?.collection.requests.map((request) => (
-              <button
-                key={request.id}
-                onClick={() => setSelectedRequestId(request.id)}
-                className={`w-full text-left rounded px-2 py-1.5 border ${
-                  request.id === selectedRequestId
-                    ? "bg-[#1b2232] border-[#3c4a6a]"
-                    : "bg-transparent border-transparent hover:bg-[#151924]"
-                }`}
-              >
-                <div className="text-xs flex items-center gap-2">
-                  <span
-                    className={`font-semibold ${methodColor(request.method)}`}
-                  >
-                    {request.method}
-                  </span>
-                  <span className="text-slate-300 truncate">
-                    {request.name}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 truncate">
-                  {request.filePath}
-                </p>
-              </button>
-            ))}
-            {!project?.collection.requests.length && (
-              <p className="text-xs text-slate-500 p-2">No requests yet.</p>
-            )}
-          </div>
+          <ScrollArea className="min-h-0 flex-1 p-2">
+            <div className="space-y-1">
+              {project?.collection.requests.map((request) => (
+                <Button
+                  key={request.id}
+                  onClick={() => setSelectedRequestId(request.id)}
+                  className={`w-full h-auto text-left rounded px-2 py-1.5 border ${
+                    request.id === selectedRequestId
+                      ? "bg-[#1b2232] border-[#3c4a6a]"
+                      : "bg-transparent border-transparent hover:bg-[#151924]"
+                  }`}
+                >
+                  <div className="text-xs flex items-center gap-2">
+                    <span className={`font-semibold ${methodColor(request.method)}`}>
+                      {request.method}
+                    </span>
+                    <span className="text-slate-300 truncate">{request.name}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 truncate">
+                    {request.filePath}
+                  </p>
+                </Button>
+              ))}
+              {!project?.collection.requests.length && (
+                <p className="text-xs text-slate-500 p-2">No requests yet.</p>
+              )}
+            </div>
+          </ScrollArea>
         </aside>
 
         <main className="min-h-0 flex flex-col bg-[#11141b] border-r border-[#2b2e3a]">
@@ -434,33 +452,41 @@ function App() {
           </div>
 
           <div className="h-9 border-b border-[#2b2e3a] px-2 flex items-end gap-1">
-            <button className="h-8 px-3 rounded-t border border-b-0 border-[#3c4a6a] bg-[#1b2232] text-xs text-slate-200">
+            <Button
+              onClick={() => setRequestTab("query")}
+              className="h-8 px-3 rounded-t border border-b-0 border-[#3c4a6a] bg-[#1b2232] text-xs text-slate-200"
+            >
               {draftRequest?.name ?? "Request"}
-            </button>
-            <button className="h-8 px-2 rounded-t border border-b-0 border-transparent bg-transparent text-xs text-slate-500">
+            </Button>
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              className="h-8 px-2 rounded-t border border-b-0 border-transparent bg-transparent text-xs text-slate-500"
+            >
               +
-            </button>
+            </Button>
           </div>
 
           <div className="p-3 border-b border-[#2b2e3a] flex items-center gap-2">
-            <select
+            <Select.Root
               value={draftRequest?.method ?? "GET"}
-              onChange={(event) =>
+              onValueChange={(value) =>
                 updateDraft((current) => ({
                   ...current,
-                  method: event.target.value as HttpMethod,
+                  method: value as HttpMethod,
                 }))
               }
-              className="h-8 min-w-24 bg-[#0d1016] border border-[#2b2e3a] rounded px-2 text-xs font-semibold text-emerald-300"
               disabled={!draftRequest}
             >
-              {methods.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
-            <input
+              <Select.Trigger className="h-8 min-w-24 bg-[#0d1016] border border-[#2b2e3a] rounded px-2 text-xs font-semibold text-emerald-300" />
+              <Select.Content className="rounded border border-[#2b2e3a] bg-[#11141b] text-slate-200 shadow-lg">
+                {methods.map((method) => (
+                  <Select.Item key={method} value={method}>
+                    {method}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+            <TextField.Root
               value={draftRequest?.url ?? ""}
               onChange={(event) =>
                 updateDraft((current) => ({
@@ -472,51 +498,70 @@ function App() {
               disabled={!draftRequest}
               className="h-8 flex-1 bg-[#0d1016] border border-[#2b2e3a] rounded px-3 text-xs"
             />
-            <button
+            <Button
               onClick={handleSend}
               disabled={!draftRequest || sending}
               className="h-8 px-3 rounded bg-[#23472c] border border-[#2f643b] text-emerald-100 text-xs font-semibold hover:bg-[#2c5a39] disabled:opacity-60"
             >
               {sending ? "Sending..." : "Send"}
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={handleSave}
               disabled={!draftRequest || saving}
               className="h-8 px-3 rounded bg-[#1f2f4c] border border-[#334a74] text-blue-100 text-xs font-semibold hover:bg-[#2a3d61] disabled:opacity-60"
             >
               {saving ? "Saving..." : dirty ? "Save *" : "Save"}
-            </button>
-            <button
-              onClick={handleDeleteRequest}
+            </Button>
+            <Button
+              onClick={() => setDeleteDialogOpen(true)}
               disabled={!selectedRequest}
               className="h-8 px-3 rounded bg-[#422126] border border-[#6a303a] text-rose-100 text-xs font-semibold hover:bg-[#572c33] disabled:opacity-60"
             >
               Delete
-            </button>
+            </Button>
           </div>
 
-          <div className="h-9 border-b border-[#2b2e3a] px-3 flex items-center gap-4 text-xs">
-            <button className="text-amber-300 border-b border-amber-300 pb-1">
-              Query
-            </button>
-            <button className="text-slate-400 hover:text-slate-200">
-              Body
-            </button>
-            <button className="text-slate-400 hover:text-slate-200">
-              Headers
-            </button>
-            <button className="text-slate-400 hover:text-slate-200">
-              Auth
-            </button>
-            <button className="text-slate-500 hover:text-slate-300 ml-auto">
-              Script
-            </button>
-          </div>
-
-          <div className="flex-1 min-h-0 p-3">
-            {draftRequest ? (
-              <div className="h-full grid grid-rows-[min-content_min-content_1fr] gap-3">
-                <input
+          <Tabs.Root
+            value={requestTab}
+            onValueChange={(value) => setRequestTab(value as RequestTab)}
+            className="flex-1 min-h-0 flex flex-col"
+          >
+            <Tabs.List className="h-9 border-b border-[#2b2e3a] px-3 flex items-center gap-4 text-xs">
+              <Tabs.Trigger
+                value="query"
+                className="text-slate-400 border-b border-transparent py-2 data-[state=active]:text-amber-300 data-[state=active]:border-amber-300"
+              >
+                Query
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="body"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-200 data-[state=active]:border-slate-300"
+              >
+                Body
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="headers"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-200 data-[state=active]:border-slate-300"
+              >
+                Headers
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="auth"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-200 data-[state=active]:border-slate-300"
+              >
+                Auth
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="script"
+                className="text-slate-500 border-b border-transparent py-2 ml-auto data-[state=active]:text-slate-300 data-[state=active]:border-slate-300"
+              >
+                Script
+              </Tabs.Trigger>
+            </Tabs.List>
+            <div className="flex-1 min-h-0 p-3">
+              {draftRequest ? (
+              <div className="h-full grid grid-rows-[min-content_1fr] gap-3">
+                <TextField.Root
                   value={draftRequest.name}
                   onChange={(event) =>
                     updateDraft((current) => ({
@@ -527,145 +572,10 @@ function App() {
                   className="h-8 w-full bg-[#0d1016] border border-[#2b2e3a] rounded px-3 text-xs"
                   placeholder="Request name"
                 />
-
-                <div className="border border-[#2b2e3a] rounded bg-[#0d1016] p-2 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">Auth</span>
-                    <select
-                      value={auth.type}
-                      onChange={(event) =>
-                        updateDraft((current) => {
-                          const type = event.target.value as AuthConfig["type"];
-                          const nextAuth: AuthConfig =
-                            type === "bearer"
-                              ? { type: "bearer", token: "" }
-                              : type === "basic"
-                                ? { type: "basic", username: "", password: "" }
-                                : type === "apikey"
-                                  ? {
-                                      type: "apikey",
-                                      key: "x-api-key",
-                                      value: "",
-                                      placement: "header",
-                                    }
-                                  : type === "inherit"
-                                    ? { type: "inherit" }
-                                    : { type: "none" };
-                          return { ...current, auth: nextAuth };
-                        })
-                      }
-                      className="h-7 bg-[#11141b] border border-[#2b2e3a] rounded px-2 text-xs"
-                    >
-                      <option value="none">none</option>
-                      <option value="inherit">inherit</option>
-                      <option value="bearer">bearer</option>
-                      <option value="basic">basic</option>
-                      <option value="apikey">apikey</option>
-                    </select>
-                  </div>
-
-                  {auth.type === "bearer" && (
-                    <input
-                      value={auth.token}
-                      onChange={(event) =>
-                        updateDraft((current) => ({
-                          ...current,
-                          auth: { type: "bearer", token: event.target.value },
-                        }))
-                      }
-                      placeholder="Bearer token"
-                      className="w-full h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
-                    />
-                  )}
-
-                  {auth.type === "basic" && (
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        value={auth.username}
-                        onChange={(event) =>
-                          updateDraft((current) => ({
-                            ...current,
-                            auth: {
-                              type: "basic",
-                              username: event.target.value,
-                              password: auth.password,
-                            },
-                          }))
-                        }
-                        placeholder="Username"
-                        className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
-                      />
-                      <input
-                        value={auth.password}
-                        onChange={(event) =>
-                          updateDraft((current) => ({
-                            ...current,
-                            auth: {
-                              type: "basic",
-                              username: auth.username,
-                              password: event.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Password"
-                        type="password"
-                        className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
-                      />
-                    </div>
-                  )}
-
-                  {auth.type === "apikey" && (
-                    <div className="grid grid-cols-3 gap-2">
-                      <input
-                        value={auth.key}
-                        onChange={(event) =>
-                          updateDraft((current) => ({
-                            ...current,
-                            auth: { ...auth, key: event.target.value },
-                          }))
-                        }
-                        placeholder="Key"
-                        className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
-                      />
-                      <input
-                        value={auth.value}
-                        onChange={(event) =>
-                          updateDraft((current) => ({
-                            ...current,
-                            auth: { ...auth, value: event.target.value },
-                          }))
-                        }
-                        placeholder="Value"
-                        className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
-                      />
-                      <select
-                        value={auth.placement}
-                        onChange={(event) =>
-                          updateDraft((current) => ({
-                            ...current,
-                            auth: {
-                              ...auth,
-                              placement: event.target.value as
-                                | "header"
-                                | "query",
-                            },
-                          }))
-                        }
-                        className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
-                      >
-                        <option value="header">header</option>
-                        <option value="query">query</option>
-                      </select>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 min-h-0">
+                {requestTab === "query" && (
                   <div className="min-h-0 flex flex-col">
-                    <p className="text-[11px] text-slate-400 mb-1">
-                      Query Params
-                    </p>
-                    <textarea
+                    <p className="text-[11px] text-slate-400 mb-1">Query Params</p>
+                    <TextArea
                       value={paramsText}
                       onChange={(event) => {
                         setParamsText(event.target.value);
@@ -674,84 +584,352 @@ function App() {
                       className="flex-1 min-h-0 bg-[#0d1016] border border-[#2b2e3a] rounded px-3 py-2 font-mono text-xs"
                     />
                   </div>
+                )}
+
+                {requestTab === "headers" && (
                   <div className="min-h-0 flex flex-col">
-                    <p className="text-[11px] text-slate-400 mb-1">
-                      Headers / Body
-                    </p>
-                    <textarea
-                      value={
-                        headersText +
-                        (headersText && draftRequest.body.data ? "\n\n" : "") +
-                        draftRequest.body.data
-                      }
+                    <p className="text-[11px] text-slate-400 mb-1">Headers</p>
+                    <TextArea
+                      value={headersText}
                       onChange={(event) => {
-                        const [nextHeaders, ...bodyChunks] =
-                          event.target.value.split("\n\n");
-                        setHeadersText(nextHeaders ?? "");
-                        updateDraft((current) => ({
-                          ...current,
-                          body: {
-                            ...current.body,
-                            type: "json",
-                            data: bodyChunks.join("\n\n"),
-                          },
-                        }));
+                        setHeadersText(event.target.value);
                         setDirty(true);
                       }}
                       className="flex-1 min-h-0 bg-[#0d1016] border border-[#2b2e3a] rounded px-3 py-2 font-mono text-xs"
                     />
                   </div>
-                </div>
+                )}
+
+                {requestTab === "body" && (
+                  <div className="min-h-0 flex flex-col">
+                    <p className="text-[11px] text-slate-400 mb-1">Body</p>
+                    <TextArea
+                      value={draftRequest.body.data}
+                      onChange={(event) =>
+                        updateDraft((current) => ({
+                          ...current,
+                          body: {
+                            ...current.body,
+                            type: "json",
+                            data: event.target.value,
+                          },
+                        }))
+                      }
+                      className="flex-1 min-h-0 bg-[#0d1016] border border-[#2b2e3a] rounded px-3 py-2 font-mono text-xs"
+                    />
+                  </div>
+                )}
+
+                {requestTab === "auth" && (
+                  <div className="border border-[#2b2e3a] rounded bg-[#0d1016] p-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Text className="text-[11px] text-slate-400">Auth</Text>
+                      <Select.Root
+                        value={auth.type}
+                        onValueChange={(value) =>
+                          updateDraft((current) => {
+                            const type = value as AuthConfig["type"];
+                            const nextAuth: AuthConfig =
+                              type === "bearer"
+                                ? { type: "bearer", token: "" }
+                                : type === "basic"
+                                  ? { type: "basic", username: "", password: "" }
+                                  : type === "apikey"
+                                    ? {
+                                        type: "apikey",
+                                        key: "x-api-key",
+                                        value: "",
+                                        placement: "header",
+                                      }
+                                    : type === "inherit"
+                                      ? { type: "inherit" }
+                                      : { type: "none" };
+                            return { ...current, auth: nextAuth };
+                          })
+                        }
+                      >
+                        <Select.Trigger className="h-7 min-w-28 bg-[#11141b] border border-[#2b2e3a] rounded px-2 text-xs" />
+                        <Select.Content className="rounded border border-[#2b2e3a] bg-[#11141b] text-slate-200 shadow-lg">
+                          {["none", "inherit", "bearer", "basic", "apikey"].map(
+                            (value) => (
+                              <Select.Item key={value} value={value}>
+                                {value}
+                              </Select.Item>
+                            ),
+                          )}
+                        </Select.Content>
+                      </Select.Root>
+                    </div>
+
+                    {auth.type === "bearer" && (
+                      <TextField.Root
+                        value={auth.token}
+                        onChange={(event) =>
+                          updateDraft((current) => ({
+                            ...current,
+                            auth: { type: "bearer", token: event.target.value },
+                          }))
+                        }
+                        placeholder="Bearer token"
+                        className="w-full h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
+                      />
+                    )}
+
+                    {auth.type === "basic" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <TextField.Root
+                          value={auth.username}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              auth: {
+                                type: "basic",
+                                username: event.target.value,
+                                password: auth.password,
+                              },
+                            }))
+                          }
+                          placeholder="Username"
+                          className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
+                        />
+                        <TextField.Root
+                          value={auth.password}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              auth: {
+                                type: "basic",
+                                username: auth.username,
+                                password: event.target.value,
+                              },
+                            }))
+                          }
+                          placeholder="Password"
+                          type="password"
+                          className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
+                        />
+                      </div>
+                    )}
+
+                    {auth.type === "apikey" && (
+                      <div className="grid grid-cols-3 gap-2">
+                        <TextField.Root
+                          value={auth.key}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              auth: { ...auth, key: event.target.value },
+                            }))
+                          }
+                          placeholder="Key"
+                          className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
+                        />
+                        <TextField.Root
+                          value={auth.value}
+                          onChange={(event) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              auth: { ...auth, value: event.target.value },
+                            }))
+                          }
+                          placeholder="Value"
+                          className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs"
+                        />
+                        <Select.Root
+                          value={auth.placement}
+                          onValueChange={(value) =>
+                            updateDraft((current) => ({
+                              ...current,
+                              auth: {
+                                ...auth,
+                                placement: value as "header" | "query",
+                              },
+                            }))
+                          }
+                        >
+                          <Select.Trigger className="h-8 bg-[#11141b] border border-[#2b2e3a] rounded px-3 text-xs" />
+                          <Select.Content className="rounded border border-[#2b2e3a] bg-[#11141b] text-slate-200 shadow-lg">
+                            {["header", "query"].map((value) => (
+                              <Select.Item key={value} value={value}>
+                                {value}
+                              </Select.Item>
+                            ))}
+                          </Select.Content>
+                        </Select.Root>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {requestTab === "script" && (
+                  <div className="h-full grid place-items-center text-sm text-slate-500">
+                    Script editor coming soon.
+                  </div>
+                )}
               </div>
             ) : (
               <div className="h-full grid place-items-center text-sm text-slate-500">
                 Select or create a request.
               </div>
             )}
-          </div>
+            </div>
+          </Tabs.Root>
         </main>
 
         <aside className="min-h-0 flex flex-col bg-[#0f1117]">
-          <div className="h-9 border-b border-[#2b2e3a] px-3 flex items-center gap-4 text-xs">
-            <button className="text-slate-100 border-b border-slate-200 pb-1">
-              Response
-            </button>
-            <button className="text-slate-500 hover:text-slate-300">
-              Headers
-            </button>
-            <button className="text-slate-500 hover:text-slate-300">
-              Timeline
-            </button>
-            <button className="text-slate-500 hover:text-slate-300">
-              Tests
-            </button>
-            {response && (
-              <span className="ml-auto text-emerald-400">
-                {response.status} {Math.round(response.durationMs)}ms
-              </span>
-            )}
-          </div>
+          <Tabs.Root
+            value={responseTab}
+            onValueChange={(value) => setResponseTab(value as ResponseTab)}
+            className="min-h-0 flex flex-col"
+          >
+            <Tabs.List className="h-9 border-b border-[#2b2e3a] px-3 flex items-center gap-4 text-xs">
+              <Tabs.Trigger
+                value="response"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-100 data-[state=active]:border-slate-200"
+              >
+                Response
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="headers"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-300 data-[state=active]:border-slate-300"
+              >
+                Headers
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="timeline"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-300 data-[state=active]:border-slate-300"
+              >
+                Timeline
+              </Tabs.Trigger>
+              <Tabs.Trigger
+                value="tests"
+                className="text-slate-500 border-b border-transparent py-2 data-[state=active]:text-slate-300 data-[state=active]:border-slate-300"
+              >
+                Tests
+              </Tabs.Trigger>
+              {response && (
+                <span className="ml-auto text-emerald-400">
+                  {response.status} {Math.round(response.durationMs)}ms
+                </span>
+              )}
+            </Tabs.List>
+          </Tabs.Root>
 
           <div className="p-3 border-b border-[#2b2e3a] text-xs text-slate-400 flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-[#151924] border border-[#2b2e3a] text-slate-300">
+            <Text className="px-2 py-0.5 rounded bg-[#151924] border border-[#2b2e3a] text-slate-300">
               JSON
-            </span>
-            <span>{response?.headers.length ?? 0} headers</span>
+            </Text>
+            <Text>{response?.headers.length ?? 0} headers</Text>
           </div>
 
-          <div className="flex-1 min-h-0 p-3 overflow-auto">
-            {response ? (
+          <ScrollArea className="flex-1 min-h-0 p-3">
+            {responseTab === "response" && response ? (
               <pre className="text-xs whitespace-pre-wrap break-words font-mono text-slate-200">
                 {prettyBody(response.body)}
               </pre>
-            ) : (
+            ) : responseTab === "response" ? (
               <p className="text-sm text-slate-500">
                 Send a request to inspect status, headers, and response body.
               </p>
+            ) : null}
+            {responseTab === "headers" &&
+              (response ? (
+                <div className="space-y-1 font-mono text-xs text-slate-300">
+                  {response.headers.map(([name, value], index) => (
+                    <p key={`${name}-${index}`}>
+                      {name}: {value}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No response headers yet.</p>
+              ))}
+            {responseTab === "timeline" &&
+              (response ? (
+                <div className="text-sm text-slate-300">
+                  Total duration: {Math.round(response.durationMs)}ms
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">No timeline data yet.</p>
+              ))}
+            {responseTab === "tests" && (
+              <p className="text-sm text-slate-500">
+                Tests panel coming soon.
+              </p>
             )}
-          </div>
+          </ScrollArea>
         </aside>
       </div>
+
+      <Dialog.Root open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <Dialog.Content className="fixed left-1/2 top-1/2 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#2b2e3a] bg-[#11141b] p-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <Dialog.Title className="text-sm font-semibold text-slate-100">
+                Create request
+              </Dialog.Title>
+              <Dialog.Close>
+                <Button className="h-7 w-7 rounded border border-[#2b2e3a] bg-[#0d1016] text-slate-400 hover:text-slate-200">
+                  x
+                </Button>
+              </Dialog.Close>
+            </div>
+
+            <TextField.Root
+              value={newRequestName}
+              onChange={(event) => setNewRequestName(event.target.value)}
+              className="mt-3 h-8 w-full bg-[#0d1016] border border-[#2b2e3a] rounded px-3 text-xs"
+              placeholder="Request name"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void handleCreateRequest(newRequestName);
+                }
+              }}
+            />
+
+            <div className="mt-3 flex justify-end gap-2">
+              <Dialog.Close>
+                <Button className="h-8 px-3 rounded border border-[#2b2e3a] bg-[#151924] text-xs text-slate-200 hover:bg-[#1a2030]">
+                  Cancel
+                </Button>
+              </Dialog.Close>
+              <Button
+                onClick={() => void handleCreateRequest(newRequestName)}
+                className="h-8 px-3 rounded bg-[#1f2f4c] border border-[#334a74] text-blue-100 text-xs font-semibold hover:bg-[#2a3d61]"
+              >
+                Create
+              </Button>
+            </div>
+        </Dialog.Content>
+      </Dialog.Root>
+
+      <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#2b2e3a] bg-[#11141b] p-4 shadow-xl">
+            <AlertDialog.Title className="text-sm font-semibold text-slate-100">
+              Delete request
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-xs text-slate-400">
+              {selectedRequest
+                ? `Delete "${selectedRequest.name}"? This action cannot be undone.`
+                : "No request selected."}
+            </AlertDialog.Description>
+            <div className="mt-4 flex justify-end gap-2">
+              <AlertDialog.Cancel>
+                <Button className="h-8 px-3 rounded border border-[#2b2e3a] bg-[#151924] text-xs text-slate-200 hover:bg-[#1a2030]">
+                  Cancel
+                </Button>
+              </AlertDialog.Cancel>
+              <AlertDialog.Action>
+                <Button
+                  onClick={() => void handleDeleteRequest()}
+                  className="h-8 px-3 rounded bg-[#422126] border border-[#6a303a] text-rose-100 text-xs font-semibold hover:bg-[#572c33]"
+                >
+                  Delete
+                </Button>
+              </AlertDialog.Action>
+            </div>
+        </AlertDialog.Content>
+      </AlertDialog.Root>
     </div>
   );
 }
