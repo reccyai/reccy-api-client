@@ -23,6 +23,13 @@ export type CreateRequestResult = {
   content: string;
 };
 
+export type PersistedAppState = {
+  lastProjectPath: string;
+  selectedRequestId: string | null;
+  requestTab: "query" | "body" | "headers" | "auth" | "script";
+  responseTab: "response" | "headers" | "timeline" | "tests";
+};
+
 export type AppRPCSchema = {
   bun: {
     requests: {
@@ -40,6 +47,14 @@ export type AppRPCSchema = {
       };
       deleteRequest: {
         params: { rootPath: string; filePath: string };
+        response: { ok: true };
+      };
+      loadAppState: {
+        params: {};
+        response: PersistedAppState | null;
+      };
+      saveAppState: {
+        params: PersistedAppState;
         response: { ok: true };
       };
     };

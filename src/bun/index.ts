@@ -1,7 +1,9 @@
 import { BrowserView, BrowserWindow, Updater } from "electrobun/bun";
 import type { ElectrobunRPCSchema } from "electrobun/bun";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import {
+  access,
   mkdir,
   readdir,
   readFile,
@@ -9,7 +11,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import type { AppRPCSchema } from "../shared/rpcContract";
+import type { AppRPCSchema, PersistedAppState } from "../shared/rpcContract";
 import {
   OPEN_COLLECTION_FILE,
   parseOpenCollectionRoot,
@@ -22,6 +24,8 @@ const DEV_SERVER_PORT = 5173;
 const DEV_SERVER_URL = `http://localhost:${DEV_SERVER_PORT}`;
 const MIN_WINDOW_WIDTH = 1000;
 const MIN_WINDOW_HEIGHT = 700;
+const APP_STATE_DIR = path.join(homedir(), ".reccy-api-client");
+const APP_STATE_FILE = path.join(APP_STATE_DIR, "state.json");
 
 const IGNORED_SCAN_DIRS = new Set([
   ".git",
@@ -110,6 +114,36 @@ function buildDefaultRequestContent(name: string): string {
   return serializeOpenCollectionRequest(document);
 }
 
+async function loadPersistedAppState(): Promise<PersistedAppState | null> {
+  try {
+    await access(APP_STATE_FILE);
+  } catch {
+    return null;
+  }
+
+  try {
+    const content = await readFile(APP_STATE_FILE, "utf8");
+    const parsed = JSON.parse(content) as Partial<PersistedAppState>;
+    if (
+      typeof parsed.lastProjectPath !== "string" ||
+      (parsed.selectedRequestId !== null &&
+        typeof parsed.selectedRequestId !== "string") ||
+      typeof parsed.requestTab !== "string" ||
+      typeof parsed.responseTab !== "string"
+    ) {
+      return null;
+    }
+    return parsed as PersistedAppState;
+  } catch {
+    return null;
+  }
+}
+
+async function savePersistedAppState(state: PersistedAppState): Promise<void> {
+  await mkdir(APP_STATE_DIR, { recursive: true });
+  await writeFile(APP_STATE_FILE, JSON.stringify(state, null, 2), "utf8");
+}
+
 const rpc = BrowserView.defineRPC<AppRPCSchema & ElectrobunRPCSchema>({
   handlers: {
     requests: async (method, params) => {
@@ -174,6 +208,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema & ElectrobunRPCSchema>({
           params as AppRPCSchema["bun"]["requests"]["deleteRequest"]["params"];
         const fullPath = path.join(path.resolve(rootPath), filePath);
         await rm(fullPath, { force: true });
+        return { ok: true as const };
+      }
+
+      if (method === "loadAppState") {
+        return await loadPersistedAppState();
+      }
+
+      if (method === "saveAppState") {
+        const payload =
+          params as AppRPCSchema["bun"]["requests"]["saveAppState"]["params"];
+        await savePersistedAppState(payload);
         return { ok: true as const };
       }
 

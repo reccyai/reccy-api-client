@@ -22,6 +22,7 @@ import {
   openProject,
   saveRequest,
 } from "./services/projectStorage";
+import { loadAppState, saveAppState } from "./services/appStateStorage";
 import {
   executeRequest,
 } from "./services/requestExecutor";
@@ -101,15 +102,40 @@ function methodColor(method: HttpMethod): string {
   return "text-slate-300";
 }
 
+function createScratchRequest(): ApiRequest {
+  return {
+    id: "scratch-request",
+    name: "Untitled Request",
+    seq: 0,
+    filePath: "",
+    method: "GET",
+    url: "",
+    headers: [],
+    params: [],
+    body: { type: "none", data: "" },
+    auth: { type: "none" },
+    settings: {
+      encodeUrl: true,
+      timeout: 0,
+      followRedirects: true,
+      maxRedirects: 10,
+    },
+  };
+}
+
 function useDraftRequest(selectedRequest: ApiRequest | null) {
-  const [draftRequest, setDraftRequest] = useState<ApiRequest | null>(null);
+  const [draftRequest, setDraftRequest] = useState<ApiRequest | null>(
+    () => createScratchRequest(),
+  );
   const [headersText, setHeadersText] = useState("");
   const [paramsText, setParamsText] = useState("");
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     if (!selectedRequest) {
-      setDraftRequest(null);
+      setDraftRequest((previous) =>
+        previous?.id === "scratch-request" ? previous : createScratchRequest(),
+      );
       setHeadersText("");
       setParamsText("");
       setDirty(false);
@@ -147,6 +173,7 @@ function useDraftRequest(selectedRequest: ApiRequest | null) {
 
 function App() {
   const { state, dispatch } = useAppState();
+  const [hasHydrated, setHasHydrated] = useState(false);
   const {
     projectPathInput,
     project,
@@ -186,20 +213,32 @@ function App() {
     updateDraft,
   } = useDraftRequest(selectedRequest);
 
-  async function handleOpenProject() {
-    if (!projectPathInput.trim()) {
-      dispatch({ type: "PATCH", payload: { error: "Enter a valid project path." } });
-      return;
-    }
-
-    dispatch({ type: "PATCH", payload: { loadingProject: true, error: null } });
+  async function openProjectAtPath(
+    rootPath: string,
+    preferredSelectedRequestId?: string | null,
+  ) {
+    dispatch({
+      type: "PATCH",
+      payload: {
+        loadingProject: true,
+        error: null,
+        projectPathInput: rootPath,
+      },
+    });
     try {
-      const openedProject = await openProject(projectPathInput.trim());
+      const openedProject = await openProject(rootPath);
+      const preferredExists =
+        preferredSelectedRequestId &&
+        openedProject.collection.requests.some(
+          (request) => request.id === preferredSelectedRequestId,
+        );
       dispatch({
         type: "PATCH",
         payload: {
           project: openedProject,
-          selectedRequestId: openedProject.collection.requests[0]?.id ?? null,
+          selectedRequestId: preferredExists
+            ? preferredSelectedRequestId
+            : openedProject.collection.requests[0]?.id ?? null,
         },
       });
     } catch (requestError) {
@@ -207,6 +246,15 @@ function App() {
     } finally {
       dispatch({ type: "PATCH", payload: { loadingProject: false } });
     }
+  }
+
+  async function handleOpenProject() {
+    if (!projectPathInput.trim()) {
+      dispatch({ type: "PATCH", payload: { error: "Enter a valid project path." } });
+      return;
+    }
+
+    await openProjectAtPath(projectPathInput.trim(), selectedRequestId);
   }
 
   async function handleCreateRequest(name: string) {
@@ -280,7 +328,7 @@ function App() {
   }
 
   async function handleSave() {
-    if (!project || !draftRequest) {
+    if (!project || !selectedRequest || !draftRequest) {
       return;
     }
 
@@ -336,6 +384,55 @@ function App() {
       dispatch({ type: "PATCH", payload: { sending: false } });
     }
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const persisted = await loadAppState();
+      if (cancelled) return;
+      if (!persisted) {
+        setHasHydrated(true);
+        return;
+      }
+
+      dispatch({
+        type: "PATCH",
+        payload: {
+          projectPathInput: persisted.lastProjectPath,
+          requestTab: persisted.requestTab,
+          responseTab: persisted.responseTab,
+        },
+      });
+      if (persisted.lastProjectPath) {
+        await openProjectAtPath(
+          persisted.lastProjectPath,
+          persisted.selectedRequestId,
+        );
+      }
+      if (!cancelled) {
+        setHasHydrated(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydrated) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void saveAppState({
+        lastProjectPath: projectPathInput.trim(),
+        selectedRequestId,
+        requestTab,
+        responseTab,
+      });
+    }, 250);
+    return () => window.clearTimeout(timeout);
+  }, [hasHydrated, projectPathInput, selectedRequestId, requestTab, responseTab]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -524,7 +621,7 @@ function App() {
             </Button>
             <Button
               onClick={handleSave}
-              disabled={!draftRequest || saving}
+              disabled={!selectedRequest || saving}
               className="h-8 px-3 rounded bg-[#1f2f4c] border border-[#334a74] text-blue-100 text-xs font-semibold hover:bg-[#2a3d61] disabled:opacity-60"
             >
               {saving ? "Saving..." : dirty ? "Save *" : "Save"}
