@@ -24,8 +24,8 @@ import {
 } from "./services/projectStorage";
 import {
   executeRequest,
-  type ExecutionResult,
 } from "./services/requestExecutor";
+import { useAppState, type RequestTab, type ResponseTab } from "./state/appState";
 
 const methods: HttpMethod[] = [
   "GET",
@@ -146,23 +146,22 @@ function useDraftRequest(selectedRequest: ApiRequest | null) {
 }
 
 function App() {
-  type RequestTab = "query" | "body" | "headers" | "auth" | "script";
-  type ResponseTab = "response" | "headers" | "timeline" | "tests";
-  const [projectPathInput, setProjectPathInput] = useState("");
-  const [project, setProject] = useState<Project | null>(null);
-  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(
-    null,
-  );
-  const [response, setResponse] = useState<ExecutionResult | null>(null);
-  const [loadingProject, setLoadingProject] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newRequestName, setNewRequestName] = useState("New Request");
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [requestTab, setRequestTab] = useState<RequestTab>("query");
-  const [responseTab, setResponseTab] = useState<ResponseTab>("response");
+  const { state, dispatch } = useAppState();
+  const {
+    projectPathInput,
+    project,
+    selectedRequestId,
+    response,
+    loadingProject,
+    sending,
+    saving,
+    error,
+    createDialogOpen,
+    newRequestName,
+    deleteDialogOpen,
+    requestTab,
+    responseTab,
+  } = state;
 
   const selectedRequest = useMemo(() => {
     if (!project || !selectedRequestId) {
@@ -189,20 +188,24 @@ function App() {
 
   async function handleOpenProject() {
     if (!projectPathInput.trim()) {
-      setError("Enter a valid project path.");
+      dispatch({ type: "PATCH", payload: { error: "Enter a valid project path." } });
       return;
     }
 
-    setLoadingProject(true);
-    setError(null);
+    dispatch({ type: "PATCH", payload: { loadingProject: true, error: null } });
     try {
       const openedProject = await openProject(projectPathInput.trim());
-      setProject(openedProject);
-      setSelectedRequestId(openedProject.collection.requests[0]?.id ?? null);
+      dispatch({
+        type: "PATCH",
+        payload: {
+          project: openedProject,
+          selectedRequestId: openedProject.collection.requests[0]?.id ?? null,
+        },
+      });
     } catch (requestError) {
-      setError((requestError as Error).message);
+      dispatch({ type: "PATCH", payload: { error: (requestError as Error).message } });
     } finally {
-      setLoadingProject(false);
+      dispatch({ type: "PATCH", payload: { loadingProject: false } });
     }
   }
 
@@ -221,25 +224,26 @@ function App() {
         project.collection.rootPath,
         trimmedName,
       );
-      setProject((previous) => {
-        if (!previous) {
-          return previous;
-        }
-        return {
-          ...previous,
-          collection: {
-            ...previous.collection,
-            requests: [...previous.collection.requests, newRequest].sort(
-              (a, b) => a.seq - b.seq || a.name.localeCompare(b.name),
-            ),
-          },
-        };
+      const nextProject: Project = {
+        ...project,
+        collection: {
+          ...project.collection,
+          requests: [...project.collection.requests, newRequest].sort(
+            (a, b) => a.seq - b.seq || a.name.localeCompare(b.name),
+          ),
+        },
+      };
+      dispatch({
+        type: "PATCH",
+        payload: {
+          project: nextProject,
+          selectedRequestId: newRequest.id,
+          createDialogOpen: false,
+          newRequestName: "New Request",
+        },
       });
-      setSelectedRequestId(newRequest.id);
-      setCreateDialogOpen(false);
-      setNewRequestName("New Request");
     } catch (requestError) {
-      setError((requestError as Error).message);
+      dispatch({ type: "PATCH", payload: { error: (requestError as Error).message } });
     }
   }
 
@@ -253,26 +257,25 @@ function App() {
         project.collection.rootPath,
         selectedRequest.filePath,
       );
-      setProject((previous) => {
-        if (!previous) {
-          return previous;
-        }
-
-        const nextRequests = previous.collection.requests.filter(
-          (request) => request.id !== selectedRequest.id,
-        );
-        setSelectedRequestId(nextRequests[0]?.id ?? null);
-        return {
-          ...previous,
-          collection: {
-            ...previous.collection,
-            requests: nextRequests,
+      const nextRequests = project.collection.requests.filter(
+        (request) => request.id !== selectedRequest.id,
+      );
+      dispatch({
+        type: "PATCH",
+        payload: {
+          project: {
+            ...project,
+            collection: {
+              ...project.collection,
+              requests: nextRequests,
+            },
           },
-        };
+          selectedRequestId: nextRequests[0]?.id ?? null,
+          deleteDialogOpen: false,
+        },
       });
-      setDeleteDialogOpen(false);
     } catch (requestError) {
-      setError((requestError as Error).message);
+      dispatch({ type: "PATCH", payload: { error: (requestError as Error).message } });
     }
   }
 
@@ -287,30 +290,29 @@ function App() {
       params: parseParams(paramsText),
     };
 
-    setSaving(true);
-    setError(null);
+    dispatch({ type: "PATCH", payload: { saving: true, error: null } });
     try {
       await saveRequest(project.collection.rootPath, payload);
-      setProject((previous) => {
-        if (!previous) {
-          return previous;
-        }
-        return {
-          ...previous,
-          collection: {
-            ...previous.collection,
-            requests: previous.collection.requests.map((request) =>
-              request.id === payload.id ? payload : request,
-            ),
+      dispatch({
+        type: "PATCH",
+        payload: {
+          project: {
+            ...project,
+            collection: {
+              ...project.collection,
+              requests: project.collection.requests.map((request) =>
+                request.id === payload.id ? payload : request,
+              ),
+            },
           },
-        };
+        },
       });
       setDraftRequest(payload);
       setDirty(false);
     } catch (requestError) {
-      setError((requestError as Error).message);
+      dispatch({ type: "PATCH", payload: { error: (requestError as Error).message } });
     } finally {
-      setSaving(false);
+      dispatch({ type: "PATCH", payload: { saving: false } });
     }
   }
 
@@ -325,14 +327,13 @@ function App() {
       params: parseParams(paramsText),
     };
 
-    setSending(true);
-    setError(null);
+    dispatch({ type: "PATCH", payload: { sending: true, error: null } });
     try {
-      setResponse(await executeRequest(payload));
+      dispatch({ type: "PATCH", payload: { response: await executeRequest(payload) } });
     } catch (requestError) {
-      setError((requestError as Error).message);
+      dispatch({ type: "PATCH", payload: { error: (requestError as Error).message } });
     } finally {
-      setSending(false);
+      dispatch({ type: "PATCH", payload: { sending: false } });
     }
   }
 
@@ -350,7 +351,7 @@ function App() {
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        setCreateDialogOpen(true);
+        dispatch({ type: "PATCH", payload: { createDialogOpen: true } });
       }
     };
 
@@ -370,7 +371,12 @@ function App() {
         <div className="text-xs text-slate-400">OpenCollection</div>
         <TextField.Root
           value={projectPathInput}
-          onChange={(event) => setProjectPathInput(event.target.value)}
+          onChange={(event) =>
+            dispatch({
+              type: "PATCH",
+              payload: { projectPathInput: event.target.value },
+            })
+          }
           className="ml-3 flex-1 h-7 bg-[#0d1016] border border-[#2b2e3a] rounded px-2 text-xs text-slate-200"
           placeholder="/path/to/repo-backed-opencollection"
         />
@@ -401,7 +407,9 @@ function App() {
               </p>
             </div>
             <Button
-              onClick={() => setCreateDialogOpen(true)}
+              onClick={() =>
+                dispatch({ type: "PATCH", payload: { createDialogOpen: true } })
+              }
               disabled={!project}
               className="h-6 px-2 rounded border border-[#2b2e3a] bg-[#151924] hover:bg-[#1a2030] text-xs disabled:opacity-50"
             >
@@ -414,7 +422,12 @@ function App() {
               {project?.collection.requests.map((request) => (
                 <Button
                   key={request.id}
-                  onClick={() => setSelectedRequestId(request.id)}
+                  onClick={() =>
+                    dispatch({
+                      type: "PATCH",
+                      payload: { selectedRequestId: request.id },
+                    })
+                  }
                   className={`w-full h-auto text-left rounded px-2 py-1.5 border ${
                     request.id === selectedRequestId
                       ? "bg-[#1b2232] border-[#3c4a6a]"
@@ -453,13 +466,17 @@ function App() {
 
           <div className="h-9 border-b border-[#2b2e3a] px-2 flex items-end gap-1">
             <Button
-              onClick={() => setRequestTab("query")}
+              onClick={() =>
+                dispatch({ type: "PATCH", payload: { requestTab: "query" } })
+              }
               className="h-8 px-3 rounded-t border border-b-0 border-[#3c4a6a] bg-[#1b2232] text-xs text-slate-200"
             >
               {draftRequest?.name ?? "Request"}
             </Button>
             <Button
-              onClick={() => setCreateDialogOpen(true)}
+              onClick={() =>
+                dispatch({ type: "PATCH", payload: { createDialogOpen: true } })
+              }
               className="h-8 px-2 rounded-t border border-b-0 border-transparent bg-transparent text-xs text-slate-500"
             >
               +
@@ -513,7 +530,9 @@ function App() {
               {saving ? "Saving..." : dirty ? "Save *" : "Save"}
             </Button>
             <Button
-              onClick={() => setDeleteDialogOpen(true)}
+              onClick={() =>
+                dispatch({ type: "PATCH", payload: { deleteDialogOpen: true } })
+              }
               disabled={!selectedRequest}
               className="h-8 px-3 rounded bg-[#422126] border border-[#6a303a] text-rose-100 text-xs font-semibold hover:bg-[#572c33] disabled:opacity-60"
             >
@@ -523,7 +542,9 @@ function App() {
 
           <Tabs.Root
             value={requestTab}
-            onValueChange={(value) => setRequestTab(value as RequestTab)}
+            onValueChange={(value) =>
+              dispatch({ type: "PATCH", payload: { requestTab: value as RequestTab } })
+            }
             className="flex-1 min-h-0 flex flex-col"
           >
             <Tabs.List className="h-9 border-b border-[#2b2e3a] px-3 flex items-center gap-4 text-xs">
@@ -779,7 +800,12 @@ function App() {
         <aside className="min-h-0 flex flex-col bg-[#0f1117]">
           <Tabs.Root
             value={responseTab}
-            onValueChange={(value) => setResponseTab(value as ResponseTab)}
+            onValueChange={(value) =>
+              dispatch({
+                type: "PATCH",
+                payload: { responseTab: value as ResponseTab },
+              })
+            }
             className="min-h-0 flex flex-col"
           >
             <Tabs.List className="h-9 border-b border-[#2b2e3a] px-3 flex items-center gap-4 text-xs">
@@ -861,7 +887,12 @@ function App() {
         </aside>
       </div>
 
-      <Dialog.Root open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+      <Dialog.Root
+        open={createDialogOpen}
+        onOpenChange={(open) =>
+          dispatch({ type: "PATCH", payload: { createDialogOpen: open } })
+        }
+      >
         <Dialog.Content className="fixed left-1/2 top-1/2 w-[360px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#2b2e3a] bg-[#11141b] p-4 shadow-xl">
             <div className="flex items-center justify-between">
               <Dialog.Title className="text-sm font-semibold text-slate-100">
@@ -876,7 +907,12 @@ function App() {
 
             <TextField.Root
               value={newRequestName}
-              onChange={(event) => setNewRequestName(event.target.value)}
+              onChange={(event) =>
+                dispatch({
+                  type: "PATCH",
+                  payload: { newRequestName: event.target.value },
+                })
+              }
               className="mt-3 h-8 w-full bg-[#0d1016] border border-[#2b2e3a] rounded px-3 text-xs"
               placeholder="Request name"
               onKeyDown={(event) => {
@@ -903,7 +939,12 @@ function App() {
         </Dialog.Content>
       </Dialog.Root>
 
-      <AlertDialog.Root open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+      <AlertDialog.Root
+        open={deleteDialogOpen}
+        onOpenChange={(open) =>
+          dispatch({ type: "PATCH", payload: { deleteDialogOpen: open } })
+        }
+      >
         <AlertDialog.Content className="fixed left-1/2 top-1/2 w-[380px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-[#2b2e3a] bg-[#11141b] p-4 shadow-xl">
             <AlertDialog.Title className="text-sm font-semibold text-slate-100">
               Delete request
